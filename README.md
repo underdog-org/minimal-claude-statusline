@@ -27,7 +27,7 @@ Week Token: ●●●●●●●●○○  83% Reset until 07-27 15:06
 ## Install (one command)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/<you>/claude-status-line/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/underdog-org/minimal-claude-statusline/main/install.sh | sh
 ```
 
 This downloads `statusline.sh` to `~/.claude/statusline.sh` and atomically merges
@@ -40,7 +40,7 @@ Then restart Claude Code and accept the workspace-trust dialog if prompted.
 **Uninstall:**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/<you>/claude-status-line/main/install.sh | sh -s -- uninstall
+curl -fsSL https://raw.githubusercontent.com/underdog-org/minimal-claude-statusline/main/install.sh | sh -s -- uninstall
 ```
 
 ### Prefer not to pipe into a shell?
@@ -48,7 +48,7 @@ curl -fsSL https://raw.githubusercontent.com/<you>/claude-status-line/main/insta
 Download and inspect first, then run:
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/<you>/claude-status-line/main/install.sh
+curl -fsSLO https://raw.githubusercontent.com/underdog-org/minimal-claude-statusline/main/install.sh
 less install.sh          # review it
 sh install.sh            # or: sh install.sh uninstall
 ```

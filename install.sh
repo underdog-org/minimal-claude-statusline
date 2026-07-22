@@ -13,7 +13,7 @@
 set -eu
 
 # --- config -----------------------------------------------------------------
-REPO_RAW="https://raw.githubusercontent.com/rong/claude-status-line/main"
+REPO_RAW="https://raw.githubusercontent.com/underdog-org/minimal-claude-statusline/main"
 CLAUDE_DIR="${HOME}/.claude"
 SCRIPT_DEST="${CLAUDE_DIR}/statusline.sh"
 SETTINGS="${CLAUDE_DIR}/settings.json"
