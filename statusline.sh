@@ -34,7 +34,7 @@ input=$(cat)
 parsed=$(
   printf '%s' "$input" | jq -r '
     [ (.model.display_name // "?"),
-      (.effort // "-"),
+      ((if (.effort | type) == "object" then .effort.level else .effort end) // "-"),
       (.context_window.used_percentage // 0),
       (.rate_limits.five_hour.used_percentage // ""),
       (.rate_limits.five_hour.resets_at // ""),
