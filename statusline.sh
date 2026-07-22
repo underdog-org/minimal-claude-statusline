@@ -36,8 +36,12 @@ G_MODEL=''      # nf-fa-robot        U+F544
 G_EFFORT='󰓅'     # nf-md-speedometer  U+F04C5
 G_CTX='󰍛'        # nf-md-memory       U+F035B
 G_BRANCH=''     # powerline branch   U+E0A0
-G_CLOCK=''      # nf-fa-clock        U+F017
+G_5H=''         # nf-fa-clock        U+F017  (5-hour window)
+G_7D=''         # nf-fa-calendar     U+F073  (weekly window)
 DIVIDER=''      # powerline soft div U+E0B1
+
+# Every line leads with exactly one glyph + one space, so the content after it
+# lines up across all three rows (Model aligns with the token labels).
 
 FILLED='●'
 EMPTY='○'
@@ -131,21 +135,21 @@ join_sep() {                          # join non-empty args with dim divider
   printf '%s' "$out"
 }
 
-token_line() {                        # $1 label  $2 pct  $3 reset
-  local label=$1 pct=$2 reset=$3 ip col fmt datestr
+token_line() {                        # $1 icon  $2 label  $3 pct  $4 reset
+  local icon=$1 label=$2 pct=$3 reset=$4 ip col fmt datestr
   if [[ -z "$pct" ]]; then
-    printf '%s%-2s  n/a%s' "$DIM" "$label" "$RESET"
+    printf '%s%s %-2s  n/a%s' "$DIM" "$icon" "$label" "$RESET"
     return
   fi
   ip=$(rnd "$pct"); col=$(pct_color "$ip")
-  printf '%s%-2s%s  %s%s%s  %s%3d%%%s' \
-    "$DIM" "$label" "$RESET" \
+  printf '%s%s %-2s%s  %s%s%s  %s%3d%%%s' \
+    "$DIM" "$icon" "$label" "$RESET" \
     "$col" "$(bar "$ip")" "$RESET" \
     "$col" "$ip" "$RESET"
   if [[ "$tier" != narrow ]]; then
     case "$tier" in full) fmt='%Y-%m-%d %H:%M' ;; *) fmt='%m-%d %H:%M' ;; esac
     datestr=$(fmt_date "$reset" "$fmt")
-    printf '   %s%s %s%s%s' "$DIM" "$G_CLOCK" "$stale" "$datestr" "$RESET"
+    printf '   %s%s%s%s' "$DIM" "$stale" "$datestr" "$RESET"
   fi
 }
 
@@ -190,5 +194,5 @@ fi
 
 # ---- render ----------------------------------------------------------------
 join_sep "$model_seg" "$effort_seg" "$ctx_seg" "$branch_seg"; printf '\n'
-token_line '5h' "$r5_pct" "$r5_reset"; printf '\n'
-token_line '7d' "$r7_pct" "$r7_reset"; printf '\n'
+token_line "$G_5H" '5h' "$r5_pct" "$r5_reset"; printf '\n'
+token_line "$G_7D" '7d' "$r7_pct" "$r7_reset"; printf '\n'
