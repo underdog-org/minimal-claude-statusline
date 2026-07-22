@@ -33,6 +33,7 @@ uninstall() {
     info "removed statusLine from $SETTINGS"
   fi
   [ -f "$SCRIPT_DEST" ] && rm -f "$SCRIPT_DEST" && info "removed $SCRIPT_DEST"
+  [ -f "${CLAUDE_DIR}/statusline-cache.json" ] && rm -f "${CLAUDE_DIR}/statusline-cache.json"
   info "done. restart Claude Code."
 }
 

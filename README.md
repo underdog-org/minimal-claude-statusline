@@ -4,32 +4,50 @@ A lightweight, minimal Claude Code status line. **Pure shell + `jq`** — no Nod
 no TypeScript, no build step.
 
 ```
-🧠 Opus 4.8 (1M context) | low | Ctx 7%
- main
-5hr  Token: ●●○○○○○○○○  22% Reset until 07-22 20:00
-Week Token: ●●○○○○○○○○  16% Reset until 07-24 14:00
+ Opus 4.8 (1M context)  󰓅 low  󰍛 7%   main
+5h  ●●○○○○○○○○   22%   2026-07-22 20:00
+7d  ●●○○○○○○○○   16%   2026-07-24 14:00
 ```
 
 ## Layout
 
 | Line | Content |
 |------|---------|
-| 1 | `<emoji> Model \| Effort \| Context%` |
-| 2 | ` current git branch` (shown only inside a repo) |
-| 3 | 5-hour token window: 10-circle bar, `%`, reset time |
-| 4 | Weekly (7-day) token window: same format |
+| 1 | ` Model  │  󰓅 Effort  │  󰍛 Context%  │   branch` |
+| 2 | `5h` — 5-hour token window: 10-circle bar, `%`, reset timestamp |
+| 3 | `7d` — weekly (7-day) token window: same format |
 
-Uses a **GitHub truecolor palette** — needs a truecolor terminal (iTerm2, WezTerm,
-Kitty, …). The branch glyph `` is the Powerlevel10k / Nerd-Font branch icon
-(U+E0A0); install a [Nerd Font](https://www.nerdfonts.com/) or it renders as tofu.
+Branch appears only inside a repo. Fields are separated by a dim Powerline soft
+divider ``.
 
-### Colors
+**Requires a truecolor terminal** (iTerm2, WezTerm, Kitty, …) **and a
+[Nerd Font](https://www.nerdfonts.com/)** for the icons (` 󰓅 󰍛  `); without a
+Nerd Font they render as tofu — swap them in the glyph block at the top of
+`statusline.sh`.
+
+### Colors — restraint by design
+
+Structure (icons, dividers, labels, timestamps) is **dim**; color is reserved for
+signals that deserve attention.
 
 - **Context & tokens** (by usage): `< 30%` green · `30–70%` yellow · `≥ 70%` red.
-- **Model** (bold, by family): Sonnet ✨ green · Opus 🧠 yellow · Fable 📖 red ·
-  Haiku 🍃 default color · unknown 🤖.
-- **Effort** (by level): `low` green · `medium` yellow · `high` red · `xhigh`
-  purple · `max` bold red.
+- **Model** (bold name; icon colored by family): Sonnet green · Opus yellow ·
+  Fable red · Haiku / unknown neutral.
+- **Effort** — quiet unless expensive: `low`/`medium` dim · `high` red ·
+  `xhigh` purple · `max` bold red.
+
+### Startup cache
+
+`rate_limits` is empty until the first API response (~10–15 s), so the two token
+lines are cached to `~/.claude/statusline-cache.json` (a single, fixed-size,
+atomically-overwritten file). During the warm-up window the last-known numbers
+are shown with a dim `~` prefix; context shows a `⋯` skeleton until live.
+
+### Responsive
+
+Adapts to `COLUMNS`: **wide** shows everything; **medium** shortens the model
+name and uses an `MM-DD HH:MM` timestamp; **narrow** drops the branch and
+timestamps and shows only the model's first word.
 
 ## Requirements
 

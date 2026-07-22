@@ -2,19 +2,22 @@
 #
 # Claude Code minimal statusline — pure shell + jq
 #
-# Four lines:
-#   1) <emoji> Model | Effort | Context
-#   2)  branch
-#   3) 5hr  Token: ●●●○○○○○○○ NN% Reset until MM-DD HH:mm
-#   4) Week Token: ●●●○○○○○○○ NN% Reset until MM-DD HH:mm
+# Three lines:
+#   1) <model> │ <effort> │ <ctx%> │ <branch>
+#   2) 5h  ●●○○○○○○○○  22%   2026-07-22 20:00
+#   3) 7d  ●●○○○○○○○○  16%   2026-07-24 14:00
 #
-# Design notes:
-#   - Reads stdin once, parses with a single jq call (@tsv) -> fast cold start.
-#   - Every jq field is guarded (`?` / `//`) so one odd shape (e.g. effort as an
-#     object) can never blank the whole line.
-#   - Writes no temp files, keeps no state -> no leak, no stale cache.
-#   - GitHub-flavored truecolor palette (needs a truecolor terminal: iTerm2, etc).
-#   - Branch glyph  is the Powerlevel10k/Nerd-Font branch icon (U+E0A0).
+# Design:
+#   - Reads stdin once, single guarded jq pass (`?`/`//`) -> fast, never blanks.
+#   - Fields split on ASCII US (0x1f), a non-whitespace IFS, so empty windows
+#     never collapse and shift later columns.
+#   - Rate-limit values are cached to ~/.claude/statusline-cache.json (single,
+#     fixed-size, atomically overwritten) so the startup window shows last-known
+#     numbers instead of n/a. Cached values are marked with a dim `~`.
+#   - Color = attention: structure (icons, dividers, labels, timestamps) is dim;
+#     only threat values (context %, token bars) and the model identity carry color.
+#   - Responsive to COLUMNS: wide / medium / narrow tiers drop segments cleanly.
+#   - Needs a truecolor terminal + a Nerd Font (icons are in the constants block).
 #
 set -uo pipefail
 
@@ -28,16 +31,24 @@ GH_RED=$'\033[38;2;248;81;73m'      # #f85149
 GH_PURPLE=$'\033[38;2;188;140;255m' # #bc8cff
 GH_GRAY=$'\033[38;2;139;148;158m'   # #8b949e
 
+# ---- glyphs (Nerd Font — swap freely) -------------------------------------
+G_MODEL=''      # nf-fa-robot        U+F544
+G_EFFORT='󰓅'     # nf-md-speedometer  U+F04C5
+G_CTX='󰍛'        # nf-md-memory       U+F035B
+G_BRANCH=''     # powerline branch   U+E0A0
+G_CLOCK=''      # nf-fa-clock        U+F017
+DIVIDER=''      # powerline soft div U+E0B1
+
 FILLED='●'
 EMPTY='○'
 BAR_LEN=10
-BRANCH_GLYPH=$''
 
-# Threshold
 LOW=30   # < LOW  -> green
 HIGH=70  # < HIGH -> yellow ; >= HIGH -> red
 
-# ---- read + parse (single jq pass, every field guarded) -------------------
+CACHE="${HOME}/.claude/statusline-cache.json"
+
+# ---- read + parse (single guarded jq pass) --------------------------------
 input=$(cat)
 
 parsed=$(
@@ -45,7 +56,7 @@ parsed=$(
     [ (.model.display_name? // "?"),
       # effort may be a string OR an object {"level": "..."} — accept both.
       ((.effort.level?) // (.effort | strings) // "-"),
-      (.context_window.used_percentage? // 0),
+      (.context_window.used_percentage? // ""),   # "" => still warming up
       (.rate_limits.five_hour.used_percentage? // ""),
       (.rate_limits.five_hour.resets_at? // ""),
       (.rate_limits.seven_day.used_percentage? // ""),
@@ -55,16 +66,38 @@ parsed=$(
   ' 2>/dev/null
 )
 
-# Split on ASCII US (0x1f): a non-whitespace IFS preserves empty fields, so an
-# absent rate_limits window can never shift later columns (e.g. cwd) leftward.
 IFS=$'\037' read -r model effort ctx r5_pct r5_reset r7_pct r7_reset cwd <<< "$parsed"
-# last-resort defaults if jq produced nothing at all
-model=${model:-?}; effort=${effort:--}; ctx=${ctx:-0}
+model=${model:-?}; effort=${effort:--}
+
+# ---- rate-limit cache (fill the startup window) ---------------------------
+stale=''
+if [[ -n "$r5_pct" ]]; then
+  # fresh data -> persist atomically for the next cold start
+  tmp=$(mktemp "${CACHE}.XXXXXX" 2>/dev/null) && {
+    printf '{"r5_pct":"%s","r5_reset":"%s","r7_pct":"%s","r7_reset":"%s"}\n' \
+      "$r5_pct" "$r5_reset" "$r7_pct" "$r7_reset" > "$tmp" && mv "$tmp" "$CACHE" \
+      || rm -f "$tmp"
+  }
+elif [[ -f "$CACHE" ]]; then
+  # no live data yet -> show last-known values, flagged stale
+  IFS=$'\037' read -r r5_pct r5_reset r7_pct r7_reset < <(
+    jq -r '[.r5_pct,.r5_reset,.r7_pct,.r7_reset]|map(tostring)|join("")' \
+      "$CACHE" 2>/dev/null
+  )
+  [[ -n "$r5_pct" ]] && stale='~'
+fi
+
+# ---- responsive tier -------------------------------------------------------
+cols=${COLUMNS:-80}
+if   (( cols >= 72 )); then tier=full
+elif (( cols >= 48 )); then tier=medium
+else                        tier=narrow
+fi
 
 # ---- pure helpers ----------------------------------------------------------
-rnd() { printf '%.0f' "${1:-0}"; }   # float pct -> nearest int
+rnd() { printf '%.0f' "${1:-0}"; }
 
-pct_color() {                         # $1 int pct -> threshold color
+pct_color() {
   local p=$1
   if   (( p < LOW  )); then printf '%s' "$GH_GREEN"
   elif (( p < HIGH )); then printf '%s' "$GH_YELLOW"
@@ -72,7 +105,7 @@ pct_color() {                         # $1 int pct -> threshold color
   fi
 }
 
-bar() {                               # $1 int pct -> 10-char circle bar
+bar() {
   local p=$1 filled i out=''
   filled=$(( (p + 5) / 10 ))
   (( filled > BAR_LEN )) && filled=$BAR_LEN
@@ -83,70 +116,79 @@ bar() {                               # $1 int pct -> 10-char circle bar
   printf '%s' "$out"
 }
 
-fmt_date() {                          # $1 epoch seconds -> MM-DD HH:mm
-  local e=$1
+fmt_date() {                          # $1 epoch  $2 strftime-format
+  local e=$1 f=$2
   [[ -z "$e" ]] && { printf '??'; return; }
-  date -r "$e" +'%m-%d %H:%M' 2>/dev/null \
-    || date -d "@$e" +'%m-%d %H:%M' 2>/dev/null \
-    || printf '??'
+  date -r "$e" +"$f" 2>/dev/null || date -d "@$e" +"$f" 2>/dev/null || printf '??'
 }
 
-token_line() {                        # $1 label  $2 pct  $3 reset-epoch
-  local label=$1 pct=$2 reset=$3 ip col
+join_sep() {                          # join non-empty args with dim divider
+  local out='' s
+  for s in "$@"; do
+    [[ -z "$s" ]] && continue
+    if [[ -z "$out" ]]; then out=$s; else out="$out ${DIM}${DIVIDER}${RESET} $s"; fi
+  done
+  printf '%s' "$out"
+}
+
+token_line() {                        # $1 label  $2 pct  $3 reset
+  local label=$1 pct=$2 reset=$3 ip col fmt datestr
   if [[ -z "$pct" ]]; then
-    printf '%s %sn/a%s' "$label" "$DIM" "$RESET"
+    printf '%s%-2s  n/a%s' "$DIM" "$label" "$RESET"
     return
   fi
-  ip=$(rnd "$pct")
-  col=$(pct_color "$ip")
-  printf '%s %s%s%s %s%3d%%%s %sReset until %s%s' \
-    "$label" \
+  ip=$(rnd "$pct"); col=$(pct_color "$ip")
+  printf '%s%-2s%s  %s%s%s  %s%3d%%%s' \
+    "$DIM" "$label" "$RESET" \
     "$col" "$(bar "$ip")" "$RESET" \
-    "$col" "$ip" "$RESET" \
-    "$DIM" "$(fmt_date "$reset")" "$RESET"
+    "$col" "$ip" "$RESET"
+  if [[ "$tier" != narrow ]]; then
+    case "$tier" in full) fmt='%Y-%m-%d %H:%M' ;; *) fmt='%m-%d %H:%M' ;; esac
+    datestr=$(fmt_date "$reset" "$fmt")
+    printf '   %s%s %s%s%s' "$DIM" "$G_CLOCK" "$stale" "$datestr" "$RESET"
+  fi
 }
 
-# ---- model: color + emoji by family ---------------------------------------
+# ---- model: name by tier, icon colored by family --------------------------
+case "$tier" in
+  full)   name=$model ;;
+  medium) name=${model% (*} ;;   # strip trailing " (1M context)"
+  narrow) name=${model%% *} ;;   # first word only
+esac
 case "$model" in
-  *Sonnet*) model_color=$GH_GREEN;  model_emoji='✨' ;;
-  *Opus*)   model_color=$GH_YELLOW; model_emoji='🧠' ;;
-  *Fable*)  model_color=$GH_RED;    model_emoji='📖' ;;
-  *Haiku*)  model_color='';         model_emoji='🍃' ;;  # default color
-  *)        model_color='';         model_emoji='🤖' ;;
+  *Sonnet*) mcolor=$GH_GREEN ;;
+  *Opus*)   mcolor=$GH_YELLOW ;;
+  *Fable*)  mcolor=$GH_RED ;;
+  *)        mcolor=$GH_GRAY ;;    # Haiku / unknown -> neutral
 esac
+model_seg="${mcolor}${G_MODEL}${RESET} ${BOLD}${name}${RESET}"
 
-# ---- effort: color by level ------------------------------------------------
+# ---- effort: dim unless expensive ------------------------------------------
 case "$effort" in
-  low)    effort_color=$GH_GREEN ;;
-  medium) effort_color=$GH_YELLOW ;;
-  high)   effort_color=$GH_RED ;;
-  xhigh)  effort_color=$GH_PURPLE ;;
-  max)    effort_color=$BOLD$GH_RED ;;
-  *)      effort_color=$GH_GRAY ;;
+  high)  ecolor=$GH_RED ;;
+  xhigh) ecolor=$GH_PURPLE ;;
+  max)   ecolor=$BOLD$GH_RED ;;
+  *)     ecolor=$DIM ;;           # low / medium / unknown -> quiet
 esac
+effort_seg="${DIM}${G_EFFORT}${RESET} ${ecolor}${effort}${RESET}"
 
-# ---- render ----------------------------------------------------------------
-ctx_i=$(rnd "$ctx")
-ctx_col=$(pct_color "$ctx_i")
-
-# Line 1: <emoji> Model | Effort | Context
-printf '%s %s%s%s%s %s|%s %s%s%s %s|%s Ctx %s%d%%%s\n' \
-  "$model_emoji" \
-  "$BOLD" "$model_color" "$model" "$RESET" \
-  "$DIM" "$RESET" \
-  "$effort_color" "$effort" "$RESET" \
-  "$DIM" "$RESET" \
-  "$ctx_col" "$ctx_i" "$RESET"
-
-# Line 2: branch (only inside a git repo)
-if [[ -n "$cwd" ]]; then
-  branch=$(git -C "$cwd" symbolic-ref --quiet --short HEAD 2>/dev/null \
-    || git -C "$cwd" rev-parse --short HEAD 2>/dev/null || true)
-  [[ -n "$branch" ]] && printf '%s %s%s%s\n' "$BRANCH_GLYPH" "$GH_GRAY" "$branch" "$RESET"
+# ---- context: threshold color, or a warming skeleton -----------------------
+if [[ -z "$ctx" ]]; then
+  ctx_seg="${DIM}${G_CTX} ⋯${RESET}"
+else
+  ci=$(rnd "$ctx")
+  ctx_seg="${DIM}${G_CTX}${RESET} $(pct_color "$ci")${ci}%${RESET}"
 fi
 
-# Line 3: 5-hour token window
-token_line '5hr  Token:' "$r5_pct" "$r5_reset"; printf '\n'
+# ---- branch: dim, only when wide/medium and inside a repo ------------------
+branch_seg=''
+if [[ "$tier" != narrow && -n "$cwd" ]]; then
+  branch=$(git -C "$cwd" symbolic-ref --quiet --short HEAD 2>/dev/null \
+    || git -C "$cwd" rev-parse --short HEAD 2>/dev/null || true)
+  [[ -n "$branch" ]] && branch_seg="${DIM}${G_BRANCH} ${branch}${RESET}"
+fi
 
-# Line 4: 7-day (weekly) token window
-token_line 'Week Token:' "$r7_pct" "$r7_reset"; printf '\n'
+# ---- render ----------------------------------------------------------------
+join_sep "$model_seg" "$effort_seg" "$ctx_seg" "$branch_seg"; printf '\n'
+token_line '5h' "$r5_pct" "$r5_reset"; printf '\n'
+token_line '7d' "$r7_pct" "$r7_reset"; printf '\n'
