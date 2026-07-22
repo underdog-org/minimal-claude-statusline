@@ -4,20 +4,32 @@ A lightweight, minimal Claude Code status line. **Pure shell + `jq`** — no Nod
 no TypeScript, no build step.
 
 ```
-Opus 4.8 | high | Ctx 45%
-5hr  Token: ●○○○○○○○○○  12% Reset until 07-23 00:00
-Week Token: ●●●●●●●●○○  83% Reset until 07-27 15:06
+🧠 Opus 4.8 (1M context) | low | Ctx 7%
+ main
+5hr  Token: ●●○○○○○○○○  22% Reset until 07-22 20:00
+Week Token: ●●○○○○○○○○  16% Reset until 07-24 14:00
 ```
 
 ## Layout
 
 | Line | Content |
 |------|---------|
-| 1 | `Model \| Effort \| Context%` |
-| 2 | 5-hour token window: 10-circle bar, `%`, reset time |
-| 3 | Weekly (7-day) token window: same format |
+| 1 | `<emoji> Model \| Effort \| Context%` |
+| 2 | ` current git branch` (shown only inside a repo) |
+| 3 | 5-hour token window: 10-circle bar, `%`, reset time |
+| 4 | Weekly (7-day) token window: same format |
 
-**Color thresholds** (both context and tokens): `< 30%` green · `30–70%` yellow · `≥ 70%` red.
+Uses a **GitHub truecolor palette** — needs a truecolor terminal (iTerm2, WezTerm,
+Kitty, …). The branch glyph `` is the Powerlevel10k / Nerd-Font branch icon
+(U+E0A0); install a [Nerd Font](https://www.nerdfonts.com/) or it renders as tofu.
+
+### Colors
+
+- **Context & tokens** (by usage): `< 30%` green · `30–70%` yellow · `≥ 70%` red.
+- **Model** (bold, by family): Sonnet ✨ green · Opus 🧠 yellow · Fable 📖 red ·
+  Haiku 🍃 default color · unknown 🤖.
+- **Effort** (by level): `low` green · `medium` yellow · `high` red · `xhigh`
+  purple · `max` bold red.
 
 ## Requirements
 
