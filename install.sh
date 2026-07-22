@@ -41,9 +41,14 @@ install() {
   need jq
   mkdir -p "$CLAUDE_DIR"
 
-  # 1. place the status line script — prefer a local copy, else download.
-  here=$(CDPATH= cd "$(dirname "$0")" 2>/dev/null && pwd || true)
-  if [ -n "$here" ] && [ -f "$here/statusline.sh" ]; then
+  # 1. place the status line script.
+  #    Use a local copy ONLY when this installer is itself a real file on disk
+  #    (i.e. `sh install.sh` from a clone). When piped via `curl ... | sh`, $0 is
+  #    "sh"/"-" (not a file), so we always download — never pick up a same-named
+  #    statusline.sh that happens to sit in the current directory.
+  if [ -f "$0" ] \
+     && here=$(CDPATH= cd "$(dirname "$0")" 2>/dev/null && pwd) \
+     && [ -f "$here/statusline.sh" ]; then
     cp "$here/statusline.sh" "$SCRIPT_DEST"
     info "copied statusline.sh -> $SCRIPT_DEST"
   else
