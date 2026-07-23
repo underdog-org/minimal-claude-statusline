@@ -25,16 +25,20 @@ divider ``.
 Nerd Font they render as tofu — swap them in the glyph block at the top of
 `statusline.sh`.
 
-### Colors — restraint by design
+### Colors — restraint, not flatness
 
-Structure (icons, dividers, labels, timestamps) is **dim**; color is reserved for
-signals that deserve attention.
+Every color has one job. Dimming *everything* is just as unreadable as coloring
+everything, so gray is spent only where it means "you can ignore this".
 
-- **Context & tokens** (by usage): `< 30%` green · `30–70%` yellow · `≥ 70%` red.
-- **Model** (bold name; icon colored by family): Sonnet green · Opus yellow ·
-  Fable red · Haiku / unknown neutral.
-- **Effort** — quiet unless expensive: `low`/`medium` dim · `high` red ·
-  `xhigh` purple · `max` bold red.
+- **Icons** — blue (`#58a6ff`), uniformly. Structure you can find at a glance.
+- **Values** — plain foreground (branch, effort, labels). Legible, not shouting.
+- **Reset timestamps** — the only grayed-out text; a dim `~` marks cached values.
+- **Model** — orange (`#ffa657`), bold. Line 1's single anchor, same for every
+  family.
+- **Usage numbers & bars** — the only threshold colors: `< 30%` green ·
+  `30–70%` yellow · `≥ 70%` red.
+- **Effort** — plain until it costs you: `high` red · `xhigh` purple ·
+  `max` bold red.
 
 ### Startup cache
 

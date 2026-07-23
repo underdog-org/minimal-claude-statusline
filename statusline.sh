@@ -14,8 +14,10 @@
 #   - Rate-limit values are cached to ~/.claude/statusline-cache.json (single,
 #     fixed-size, atomically overwritten) so the startup window shows last-known
 #     numbers instead of n/a. Cached values are marked with a dim `~`.
-#   - Color = attention: structure (icons, dividers, labels, timestamps) is dim;
-#     only threat values (context %, token bars) and the model identity carry color.
+#   - Color has a job: icons are blue (structure you can find at a glance), text
+#     is plain foreground, reset timestamps are the only grayed-out thing, and
+#     the threshold colors (green/yellow/red) are reserved for usage numbers.
+#     Model identity is orange so line 1 has one clear anchor.
 #   - Responsive to COLUMNS: wide / medium / narrow tiers drop segments cleanly.
 #   - Needs a truecolor terminal + a Nerd Font (icons are in the constants block).
 #
@@ -29,7 +31,9 @@ GH_GREEN=$'\033[38;2;63;185;80m'    # #3fb950
 GH_YELLOW=$'\033[38;2;210;153;34m'  # #d29922
 GH_RED=$'\033[38;2;248;81;73m'      # #f85149
 GH_PURPLE=$'\033[38;2;188;140;255m' # #bc8cff
-GH_GRAY=$'\033[38;2;139;148;158m'   # #8b949e
+GH_BLUE=$'\033[38;2;88;166;255m'    # #58a6ff  — all structural icons
+GH_ORANGE=$'\033[38;2;255;166;87m'  # #ffa657  — model identity
+GH_GRAY=$'\033[38;2;139;148;158m'   # #8b949e  — reset timestamps only
 
 # ---- glyphs (Nerd Font — swap freely) -------------------------------------
 G_MODEL=''      # nf-fa-robot        U+F544
@@ -138,58 +142,53 @@ join_sep() {                          # join non-empty args with dim divider
 token_line() {                        # $1 icon  $2 label  $3 pct  $4 reset
   local icon=$1 label=$2 pct=$3 reset=$4 ip col fmt datestr
   if [[ -z "$pct" ]]; then
-    printf '%s%s %-2s  n/a%s' "$DIM" "$icon" "$label" "$RESET"
+    printf '%s%s%s %-2s  %sn/a%s' \
+      "$GH_BLUE" "$icon" "$RESET" "$label" "$GH_GRAY" "$RESET"
     return
   fi
   ip=$(rnd "$pct"); col=$(pct_color "$ip")
-  printf '%s%s %-2s%s  %s%s%s  %s%3d%%%s' \
-    "$DIM" "$icon" "$label" "$RESET" \
+  printf '%s%s%s %-2s  %s%s%s  %s%3d%%%s' \
+    "$GH_BLUE" "$icon" "$RESET" "$label" \
     "$col" "$(bar "$ip")" "$RESET" \
     "$col" "$ip" "$RESET"
   if [[ "$tier" != narrow ]]; then
     case "$tier" in full) fmt='%Y-%m-%d %H:%M' ;; *) fmt='%m-%d %H:%M' ;; esac
     datestr=$(fmt_date "$reset" "$fmt")
-    printf '   %s%s%s%s' "$DIM" "$stale" "$datestr" "$RESET"
+    printf '   %s%s%s%s' "$GH_GRAY" "$stale" "$datestr" "$RESET"
   fi
 }
 
-# ---- model: name by tier, icon colored by family --------------------------
+# ---- model: name by tier, one identity color across all families ----------
 case "$tier" in
   full)   name=$model ;;
   medium) name=${model% (*} ;;   # strip trailing " (1M context)"
   narrow) name=${model%% *} ;;   # first word only
 esac
-case "$model" in
-  *Sonnet*) mcolor=$GH_GREEN ;;
-  *Opus*)   mcolor=$GH_YELLOW ;;
-  *Fable*)  mcolor=$GH_RED ;;
-  *)        mcolor=$GH_GRAY ;;    # Haiku / unknown -> neutral
-esac
-model_seg="${mcolor}${G_MODEL}${RESET} ${BOLD}${name}${RESET}"
+model_seg="${GH_ORANGE}${G_MODEL}${RESET} ${BOLD}${GH_ORANGE}${name}${RESET}"
 
-# ---- effort: dim unless expensive ------------------------------------------
+# ---- effort: plain foreground unless expensive ------------------------------
 case "$effort" in
   high)  ecolor=$GH_RED ;;
   xhigh) ecolor=$GH_PURPLE ;;
   max)   ecolor=$BOLD$GH_RED ;;
-  *)     ecolor=$DIM ;;           # low / medium / unknown -> quiet
+  *)     ecolor='' ;;             # low / medium / unknown -> plain, still legible
 esac
-effort_seg="${DIM}${G_EFFORT}${RESET} ${ecolor}${effort}${RESET}"
+effort_seg="${GH_BLUE}${G_EFFORT}${RESET} ${ecolor}${effort}${RESET}"
 
 # ---- context: threshold color, or a warming skeleton -----------------------
 if [[ -z "$ctx" ]]; then
-  ctx_seg="${DIM}${G_CTX} ⋯${RESET}"
+  ctx_seg="${GH_BLUE}${G_CTX}${RESET} ${GH_GRAY}⋯${RESET}"
 else
   ci=$(rnd "$ctx")
-  ctx_seg="${DIM}${G_CTX}${RESET} $(pct_color "$ci")${ci}%${RESET}"
+  ctx_seg="${GH_BLUE}${G_CTX}${RESET} $(pct_color "$ci")${ci}%${RESET}"
 fi
 
-# ---- branch: dim, only when wide/medium and inside a repo ------------------
+# ---- branch: blue glyph + plain name, wide/medium only, inside a repo ------
 branch_seg=''
 if [[ "$tier" != narrow && -n "$cwd" ]]; then
   branch=$(git -C "$cwd" symbolic-ref --quiet --short HEAD 2>/dev/null \
     || git -C "$cwd" rev-parse --short HEAD 2>/dev/null || true)
-  [[ -n "$branch" ]] && branch_seg="${DIM}${G_BRANCH} ${branch}${RESET}"
+  [[ -n "$branch" ]] && branch_seg="${GH_BLUE}${G_BRANCH}${RESET} ${branch}"
 fi
 
 # ---- render ----------------------------------------------------------------
