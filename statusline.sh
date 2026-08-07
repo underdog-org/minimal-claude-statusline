@@ -2,10 +2,11 @@
 #
 # Claude Code minimal statusline — pure shell + jq
 #
-# Three lines:
-#   1) <model> │ <effort> │ <ctx%> │ <branch>
-#   2) 5h  ●●○○○○○○○○  22%   2026-07-22 20:00
-#   3) 7d  ●●○○○○○○○○  16%   2026-07-24 14:00
+# Four lines:
+#   1) <model> │ <effort> │ <ctx%>
+#   2) <repo> │ <path-in-repo> │ <branch>
+#   3) 5h  ●●○○○○○○○○  22%   2026-07-22 20:00
+#   4) 7d  ●●○○○○○○○○  16%   2026-07-24 14:00
 #
 # Design:
 #   - Reads stdin once, single guarded jq pass (`?`/`//`) -> fast, never blanks.
@@ -17,6 +18,8 @@
 #     so parallel sessions otherwise drift; usage is monotonic within a window,
 #     so "later window wins, then larger number wins" makes them converge — and
 #     fills the startup window instead of showing n/a.
+#   - Line 2 answers "where am I": repo, the path inside it, and the branch —
+#     one semantic group, so they share a row and leave line 1 to identity.
 #   - Color has a job: icons are blue (structure you can find at a glance), text
 #     is plain foreground, gray means "nothing to see here" (reset timestamps,
 #     default effort), and the threshold colors (green/yellow/red) belong to
@@ -43,6 +46,8 @@ GH_GRAY=$'\033[38;2;139;148;158m'   # #8b949e  — reset timestamps only
 G_MODEL=''      # nf-fa-robot        U+F544
 G_EFFORT='󰓅'     # nf-md-speedometer  U+F04C5
 G_CTX='󰍛'        # nf-md-memory       U+F035B
+G_REPO=''       # nf-oct-repo        U+F401
+G_DIR=''        # nf-fa-folder_open  U+F07C
 G_BRANCH=''     # powerline branch   U+E0A0
 G_5H=''         # nf-fa-clock        U+F017  (5-hour window)
 G_7D=''         # nf-fa-calendar     U+F073  (weekly window)
@@ -211,15 +216,47 @@ else
   ctx_seg="${GH_BLUE}${G_CTX}${RESET} $(pct_color "$ci")${ci}%${RESET}"
 fi
 
-# ---- branch: blue glyph + plain name, wide/medium only, inside a repo ------
-branch_seg=''
-if [[ "$tier" != narrow && -n "$cwd" ]]; then
-  branch=$(git -C "$cwd" symbolic-ref --quiet --short HEAD 2>/dev/null \
-    || git -C "$cwd" rev-parse --short HEAD 2>/dev/null || true)
-  [[ -n "$branch" ]] && branch_seg="${GH_BLUE}${G_BRANCH}${RESET} ${branch}"
+# ---- location: repo, path inside it, branch --------------------------------
+# One `git rev-parse` answers both halves (it echoes results in argument order),
+# so the whole line costs a single fork.  The path is shown *relative to the
+# repo root* — "src/lib" next to the repo name beats re-printing an absolute
+# path whose prefix never changes — and collapses to nothing at the root.
+repo_seg=''; path_seg=''; branch_seg=''
+if [[ -n "$cwd" ]]; then
+  root=''; branch=''
+  { IFS= read -r root; IFS= read -r branch; } < <(
+    git -C "$cwd" rev-parse --show-toplevel --abbrev-ref HEAD 2>/dev/null
+  )
+  # detached HEAD reports the literal "HEAD"; fall back to the short sha
+  [[ "$branch" == HEAD ]] &&
+    branch=$(git -C "$cwd" rev-parse --short HEAD 2>/dev/null || true)
+
+  if [[ -n "$root" ]]; then
+    repo_seg="${GH_BLUE}${G_REPO}${RESET} ${root##*/}"
+    rel=${cwd#"$root"}; rel=${rel#/}          # empty when sitting at the root
+  else
+    rel=$cwd                                   # outside a repo: the cwd itself
+    [[ "$rel" == "$HOME" || "$rel" == "$HOME"/* ]] && rel="~${rel#"$HOME"}"
+  fi
+
+  case "$tier" in
+    full)   ;;                                 # keep the whole relative path
+    medium) rel=${rel##*/} ;;                  # deepest component only
+    narrow) rel='' ;;
+  esac
+
+  if [[ -n "$rel" ]]; then                     # leaf plain, parents dimmed
+    leaf=${rel##*/}
+    path_seg="${GH_BLUE}${G_DIR}${RESET} ${DIM}${rel%"$leaf"}${RESET}${leaf}"
+  fi
+
+  [[ "$tier" != narrow && -n "$branch" ]] &&
+    branch_seg="${GH_BLUE}${G_BRANCH}${RESET} ${branch}"
 fi
+loc_line=$(join_sep "$repo_seg" "$path_seg" "$branch_seg")
 
 # ---- render ----------------------------------------------------------------
-join_sep "$model_seg" "$effort_seg" "$ctx_seg" "$branch_seg"; printf '\n'
+join_sep "$model_seg" "$effort_seg" "$ctx_seg"; printf '\n'
+[[ -n "$loc_line" ]] && printf '%s\n' "$loc_line"
 token_line "$G_5H" '5h' "$r5_pct" "$r5_reset"; printf '\n'
 token_line "$G_7D" '7d' "$r7_pct" "$r7_reset"; printf '\n'

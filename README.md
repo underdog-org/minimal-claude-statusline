@@ -4,7 +4,8 @@ A lightweight, minimal Claude Code status line. **Pure shell + `jq`** — no Nod
 no TypeScript, no build step.
 
 ```
- Opus 4.8 (1M context)  󰓅 low  󰍛 7%   main
+ Opus 4.8 (1M context)  󰓅 low  󰍛 7%
+ claude-status-line   src/lib   main
 5h  ●●○○○○○○○○   22%   2026-07-22 20:00
 7d  ●●○○○○○○○○   16%   2026-07-24 14:00
 ```
@@ -13,12 +14,16 @@ no TypeScript, no build step.
 
 | Line | Content |
 |------|---------|
-| 1 | ` Model  │  󰓅 Effort  │  󰍛 Context%  │   branch` |
-| 2 | `5h` — 5-hour token window: 10-circle bar, `%`, reset timestamp |
-| 3 | `7d` — weekly (7-day) token window: same format |
+| 1 | ` Model  │  󰓅 Effort  │  󰍛 Context%` — who you're talking to |
+| 2 | ` repo  │   path  │   branch` — where you are |
+| 3 | `5h` — 5-hour token window: 10-circle bar, `%`, reset timestamp |
+| 4 | `7d` — weekly (7-day) token window: same format |
 
-Branch appears only inside a repo. Fields are separated by a dim Powerline soft
-divider ``.
+Line 2 appears only when the session has a directory. Inside a repo it shows the
+repo name and the path **relative to its root** — re-printing the absolute prefix
+every render buys nothing — and the path collapses entirely at the root. Outside
+a repo it falls back to the `~`-shortened working directory. Fields are separated
+by a dim Powerline soft divider ``.
 
 **Requires a truecolor terminal** (iTerm2, WezTerm, Kitty, …) **and a
 [Nerd Font](https://www.nerdfonts.com/)** for the icons (` 󰓅 󰍛  `); without a
@@ -31,8 +36,11 @@ Every color has one job. Dimming *everything* is just as unreadable as coloring
 everything, so gray is spent only where it means "you can ignore this".
 
 - **Icons** — blue (`#58a6ff`), uniformly. Structure you can find at a glance.
-- **Values** — plain foreground (branch, effort, labels). Legible, not shouting.
+- **Values** — plain foreground (repo, branch, effort, labels). Legible, not
+  shouting.
 - **Reset timestamps** — the only grayed-out text; a dim `~` marks cached values.
+  A path's parent components are dimmed too, so the directory you're actually in
+  is the part that reads.
 - **Model** — orange (`#ffa657`), bold. Line 1's single anchor, same for every
   family.
 - **Usage numbers & bars** — the only threshold colors: `< 30%` green ·
@@ -50,8 +58,9 @@ are shown with a dim `~` prefix; context shows a `⋯` skeleton until live.
 ### Responsive
 
 Adapts to `COLUMNS`: **wide** shows everything; **medium** shortens the model
-name and uses an `MM-DD HH:MM` timestamp; **narrow** drops the branch and
-timestamps and shows only the model's first word.
+name, keeps only the deepest path component, and uses an `MM-DD HH:MM`
+timestamp; **narrow** drops the path, branch and timestamps and shows only the
+model's first word.
 
 ## Requirements
 
