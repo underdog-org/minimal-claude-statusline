@@ -11,9 +11,12 @@
 #   - Reads stdin once, single guarded jq pass (`?`/`//`) -> fast, never blanks.
 #   - Fields split on ASCII US (0x1f), a non-whitespace IFS, so empty windows
 #     never collapse and shift later columns.
-#   - Rate-limit values are cached to ~/.claude/statusline-cache.json (single,
-#     fixed-size, atomically overwritten) so the startup window shows last-known
-#     numbers instead of n/a. Cached values are marked with a dim `~`.
+#   - Rate-limit values are merged against a shared cache at
+#     ~/.claude/statusline-cache.json (single, fixed-size, atomically
+#     overwritten).  A session only sees new numbers when *it* calls the API,
+#     so parallel sessions otherwise drift; usage is monotonic within a window,
+#     so "later window wins, then larger number wins" makes them converge — and
+#     fills the startup window instead of showing n/a.
 #   - Color has a job: icons are blue (structure you can find at a glance), text
 #     is plain foreground, reset timestamps are the only grayed-out thing, and
 #     the threshold colors (green/yellow/red) are reserved for usage numbers.
@@ -77,22 +80,44 @@ parsed=$(
 IFS=$'\037' read -r model effort ctx r5_pct r5_reset r7_pct r7_reset cwd <<< "$parsed"
 model=${model:-?}; effort=${effort:--}
 
-# ---- rate-limit cache (fill the startup window) ---------------------------
-stale=''
-if [[ -n "$r5_pct" ]]; then
-  # fresh data -> persist atomically for the next cold start
+# ---- rate-limit cache: merge live values with the shared cache ------------
+# Each session only learns new rate-limit numbers when *it* talks to the API,
+# so an idle session keeps showing whatever it last saw and parallel sessions
+# drift apart (88% / 90% / 91%).  Usage inside a window is monotonic — it only
+# rises until resets_at — so merging against a shared cache is unambiguous:
+# a later window wins, and within one window the larger number wins.
+cache_json='{}'
+if [[ -f "$CACHE" ]]; then
+  c=$(<"$CACHE") && jq -e . >/dev/null 2>&1 <<< "$c" && cache_json=$c
+fi
+
+merged=$(
+  jq -rn --argjson c "$cache_json" \
+    --arg lp5 "$r5_pct" --arg lr5 "$r5_reset" \
+    --arg lp7 "$r7_pct" --arg lr7 "$r7_reset" '
+      def num: tostring | tonumber? // 0;
+      def pick(lp; lr; cp; cr):
+        if   (lp // "") == ""     then [cp // "", cr // ""]
+        elif (cp // "") == ""     then [lp, lr]
+        elif (cr|num) > (lr|num)  then [cp, cr]        # cache is a newer window
+        elif (cr|num) < (lr|num)  then [lp, lr]        # live is a newer window
+        elif (cp|num) > (lp|num)  then [cp, cr]        # same window, cache saw more
+        else [lp, lr] end;
+      pick($lp5; $lr5; $c.r5_pct; $c.r5_reset)
+      + pick($lp7; $lr7; $c.r7_pct; $c.r7_reset)
+      | map(tostring) | join("")
+    ' 2>/dev/null
+)
+[[ -n "$merged" ]] &&
+  IFS=$'\037' read -r r5_pct r5_reset r7_pct r7_reset <<< "$merged"
+
+# persist the merged view so every session converges on the same numbers
+if [[ -n "$r5_pct" || -n "$r7_pct" ]]; then
   tmp=$(mktemp "${CACHE}.XXXXXX" 2>/dev/null) && {
     printf '{"r5_pct":"%s","r5_reset":"%s","r7_pct":"%s","r7_reset":"%s"}\n' \
       "$r5_pct" "$r5_reset" "$r7_pct" "$r7_reset" > "$tmp" && mv "$tmp" "$CACHE" \
       || rm -f "$tmp"
   }
-elif [[ -f "$CACHE" ]]; then
-  # no live data yet -> show last-known values, flagged stale
-  IFS=$'\037' read -r r5_pct r5_reset r7_pct r7_reset < <(
-    jq -r '[.r5_pct,.r5_reset,.r7_pct,.r7_reset]|map(tostring)|join("")' \
-      "$CACHE" 2>/dev/null
-  )
-  [[ -n "$r5_pct" ]] && stale='~'
 fi
 
 # ---- responsive tier -------------------------------------------------------
@@ -154,7 +179,7 @@ token_line() {                        # $1 icon  $2 label  $3 pct  $4 reset
   if [[ "$tier" != narrow ]]; then
     case "$tier" in full) fmt='%Y-%m-%d %H:%M' ;; *) fmt='%m-%d %H:%M' ;; esac
     datestr=$(fmt_date "$reset" "$fmt")
-    printf '   %s%s%s%s' "$GH_GRAY" "$stale" "$datestr" "$RESET"
+    printf '   %s%s%s' "$GH_GRAY" "$datestr" "$RESET"
   fi
 }
 
