@@ -45,8 +45,8 @@ everything, so gray is spent only where it means "you can ignore this".
   family.
 - **Usage numbers & bars** — the only threshold colors: `< 30%` green ·
   `30–70%` yellow · `≥ 70%` red.
-- **Effort** — plain until it costs you: `high` red · `xhigh` purple ·
-  `max` bold red.
+- **Effort** — borrows the usage ramp as it gets expensive: `low` gray ·
+  `medium` green · `high` orange · `xhigh` red · `max` bold red.
 
 ### Startup cache
 
