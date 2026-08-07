@@ -18,9 +18,10 @@
 #     so "later window wins, then larger number wins" makes them converge — and
 #     fills the startup window instead of showing n/a.
 #   - Color has a job: icons are blue (structure you can find at a glance), text
-#     is plain foreground, reset timestamps are the only grayed-out thing, and
-#     the threshold colors (green/yellow/red) are reserved for usage numbers.
-#     Model identity is orange so line 1 has one clear anchor.
+#     is plain foreground, gray means "nothing to see here" (reset timestamps,
+#     default effort), and the threshold colors (green/yellow/red) belong to
+#     usage numbers.  Effort borrows that same ramp — gray/green/orange/red as
+#     it climbs — and model identity is orange so line 1 has one clear anchor.
 #   - Responsive to COLUMNS: wide / medium / narrow tiers drop segments cleanly.
 #   - Needs a truecolor terminal + a Nerd Font (icons are in the constants block).
 #
@@ -191,12 +192,14 @@ case "$tier" in
 esac
 model_seg="${GH_ORANGE}${G_MODEL}${RESET} ${BOLD}${GH_ORANGE}${name}${RESET}"
 
-# ---- effort: plain foreground unless expensive ------------------------------
+# ---- effort: climbs the palette as it gets expensive ------------------------
 case "$effort" in
-  high)  ecolor=$GH_RED ;;
-  xhigh) ecolor=$GH_PURPLE ;;
-  max)   ecolor=$BOLD$GH_RED ;;
-  *)     ecolor='' ;;             # low / medium / unknown -> plain, still legible
+  low)    ecolor=$GH_GRAY ;;
+  medium) ecolor=$GH_GREEN ;;
+  high)   ecolor=$GH_ORANGE ;;
+  xhigh)  ecolor=$GH_RED ;;
+  max)    ecolor=$BOLD$GH_RED ;;
+  *)      ecolor=$GH_GRAY ;;      # unknown -> gray, same as the default level
 esac
 effort_seg="${GH_BLUE}${G_EFFORT}${RESET} ${ecolor}${effort}${RESET}"
 
